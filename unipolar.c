@@ -13,6 +13,12 @@
     #define _XTAL_FREQ 8000000
 #endif
 
+#ifdef RESISTOR
+#define DUTY_RED_FACTOR 1
+#else
+#define DUTY_RED_FACTOR 4
+#endif
+
 #define PERIOD_FACTOR  ((_XTAL_FREQ)/(8000000))
 
 #pragma config FCMEN = OFF      // Fail-Safe Clock Monitor Enable bit (Fail-Safe Clock Monitor disabled)
@@ -82,7 +88,7 @@ typedef struct {
 
 typedef enum
 {
-    INIT, IDLE, MOTOR_START, MOTOR_STOP
+    INIT, IDLE, MOTOR_START = 1, MOTOR_STOP
 } STATES;
 
 INTERRUPTS flags;
@@ -139,11 +145,13 @@ STATES mainState = INIT;
             case MOTOR_STOP:
                 break;
         }
+        LED_D1_ON = MOTOR_START;
     }
 }
 
 static void Init(){
-    
+    LED_D1_DIR = 0;
+    LED_D1_ON = 0;
     TRISAbits.TRISA0 = 1;
     ANSEL0bits.ANS0 = 1;
     ADCHS &= 0xFC ; 
@@ -200,7 +208,7 @@ static void temp_start()
 {
     if(flags.ADC == 1)
     {
-        while(!PIR1bits.ADIF);
+        while(!PIR1bits.ADIF);       
         inc = 1 + ADRESH;           // Transfering only the most 8 MSBs
     }
     else 
@@ -270,8 +278,8 @@ void interrupt isr(void)
 
 void modulation_spwm(const unsigned int *in,unsigned int *out, unsigned char div_fac)
 {
-
     for(uint8_t z = 0; z < (SIZE_OF_SINETABLE-1);z++)
-        *(out + z) = (*(in + z))*PERIOD_FACTOR/10;
-    
+    {
+        *(out + z) = ((*(in + z))*PERIOD_FACTOR/10)*DUTY_RED_FACTOR;
+    }
 }
