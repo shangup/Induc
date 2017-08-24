@@ -88,7 +88,7 @@ typedef struct {
 
 typedef enum
 {
-    INIT, IDLE, MOTOR_START = 1, MOTOR_STOP
+    INIT = 0 , IDLE = 2, MOTOR_START = 1, MOTOR_STOP=4
 } STATES;
 
 INTERRUPTS flags;
@@ -97,7 +97,7 @@ static void Init(void);
 static void temp_start(void);
 void modulation_spwm (const unsigned int *in,unsigned int *out, unsigned char div_fac);
 
-unsigned int period = 55*PERIOD_FACTOR; // <= NEED TO BE FUCTION OF XTAL
+unsigned int period = 220*PERIOD_FACTOR; // <= NEED TO BE FUCTION OF XTAL
 unsigned int dutyy = 00; // multiply by 4, by own
 unsigned char i=0;
 unsigned char j=0;
@@ -145,12 +145,13 @@ STATES mainState = INIT;
             case MOTOR_STOP:
                 break;
         }
-        LED_D1_ON = MOTOR_START;
+        LED_D1_ON =(mainState==MOTOR_START);
     }
 }
 
 static void Init(){
     LED_D1_DIR = 0;
+    LED_D2_DIR = 0;
     LED_D1_ON = 0;
     TRISAbits.TRISA0 = 1;
     ANSEL0bits.ANS0 = 1;
@@ -214,7 +215,7 @@ static void temp_start()
     else 
         inc = 500;
         PIR1bits.ADIF = 0;  
-        LATDbits.LATD0 = !(LATDbits.LATD0);
+        LED_D2_TEMP ^= 1;
 }
 
 

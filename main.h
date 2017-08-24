@@ -37,7 +37,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 
-#define RESISTOR
+//#define RESISTOR
 //#define CRYSTALL
 
 
