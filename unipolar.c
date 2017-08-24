@@ -13,6 +13,8 @@
     #define _XTAL_FREQ 8000000
 #endif
 
+#define PERIOD_FACTOR  ((_XTAL_FREQ)/(8000000))
+
 #pragma config FCMEN = OFF      // Fail-Safe Clock Monitor Enable bit (Fail-Safe Clock Monitor disabled)
 #pragma config IESO = OFF       // Internal External Oscillator Switchover bit (Internal External Switchover mode disabled)
 
@@ -89,7 +91,7 @@ static void Init(void);
 static void temp_start(void);
 void modulation_spwm (const unsigned int *in,unsigned int *out, unsigned char div_fac);
 
-unsigned int period = 55*5;
+unsigned int period = 55*PERIOD_FACTOR; // <= NEED TO BE FUCTION OF XTAL
 unsigned int dutyy = 00; // multiply by 4, by own
 unsigned char i=0;
 unsigned char j=0;
@@ -123,16 +125,22 @@ STATES mainState = INIT;
             mainState = IDLE;
             break;
         case IDLE:
+            // <- ADD here SW1 START button
             mainState = MOTOR_START;
             break;
         case MOTOR_START:
+            // <- ADD HERE IF WANT TO STOP
+            // THEN make STATE = STOP
             temp_start();
+            break;
+        case MOTOR_STOP:
             break;
     }
 }
 
-void Init(){
-        TRISAbits.TRISA0 = 1;
+static void Init(){
+    
+    TRISAbits.TRISA0 = 1;
     ANSEL0bits.ANS0 = 1;
     ADCHS &= 0xFC ; 
     ADCON0 = 0x20 ; // Continous; Single channel mode enable; Single channed mode 1 ; 0;0
@@ -144,7 +152,9 @@ void Init(){
     
     OVDCONS = 0x00;
    
-    PTCON0 = 0x02;      // Post scaler TB 1/2 Cause of Center, and 1 for 40Mhz ; TB input scaler 1; PTMOD = Up/   DOwn count // Currently post scaller is 2 to create lookup increment by 1 per (2 interaction))
+    PTCON0 = 0x02;      // Post scaler TB 1/2 Cause of Center, and 1 for 40Mhz ; 
+    //TB input scaler 1; PTMOD = Up/   DOwn count 
+    // Currently post scaller is 2 to create lookup increment by 1 per (2 interaction))
     PTPERL = period;// PTPER 55
     PTPERH = period >> 8;
     
@@ -182,7 +192,8 @@ void Init(){
     ADCON0bits.GO = 1;
 }
 
-void temp_start(){
+static void temp_start()
+{
         while(!PIR1bits.ADIF);
         inc = 1 + ADRESH;           // Transfering only the most 8 MSBs
         PIR1bits.ADIF = 0;  
@@ -227,6 +238,6 @@ void modulation_spwm(const unsigned int *in,unsigned int *out, unsigned char div
 {
 
     for(uint8_t z = 0; z < (SIZE_OF_SINETABLE-1);z++)
-        *(out + z) = (*(in + z))/2;
+        *(out + z) = (*(in + z))*PERIOD_FACTOR/2;
     
 }
