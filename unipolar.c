@@ -112,29 +112,33 @@ void main ()
 STATES mainState = INIT; 
 #ifdef CRYSTALL
     while(!OSCCONbits.OSTS ==1);
+    flags.ADC = 1;
 #else
     OSCTUNEbits.TUN = 0x0F;
     OSCCONbits.IRCF = 7;
     while(!OSCCONbits.IOFS ==1);
+    flags.ADC = 0;
 #endif
-    
-    switch(mainState)
+    while(1)
     {
-        case INIT:
-            Init();
-            mainState = IDLE;
-            break;
-        case IDLE:
-            // <- ADD here SW1 START button
-            mainState = MOTOR_START;
-            break;
-        case MOTOR_START:
-            // <- ADD HERE IF WANT TO STOP
-            // THEN make STATE = STOP
-            temp_start();
-            break;
-        case MOTOR_STOP:
-            break;
+        switch(mainState)
+        {
+            case INIT:
+                Init();
+                mainState = IDLE;
+                break;
+            case IDLE:
+                // <- ADD here SW1 START button
+                mainState = MOTOR_START;
+                break;
+            case MOTOR_START:
+                // <- ADD HERE IF WANT TO STOP
+                // THEN make STATE = STOP
+                temp_start();
+                break;
+            case MOTOR_STOP:
+                break;
+        }
     }
 }
 
@@ -194,8 +198,13 @@ static void Init(){
 
 static void temp_start()
 {
+    if(flags.ADC == 1)
+    {
         while(!PIR1bits.ADIF);
         inc = 1 + ADRESH;           // Transfering only the most 8 MSBs
+    }
+    else 
+        inc = 500;
         PIR1bits.ADIF = 0;  
         LATDbits.LATD0 = !(LATDbits.LATD0);
 }
@@ -205,22 +214,48 @@ void interrupt isr(void)
 {
     m=m+(inc*2);
     n = m + 2*16384;
-    
     if ( i > m>>(16-SIZE_OF_SINTABLE_IN_POWER_OF_2) )
     {
+        OVDCONDbits.POVD0 = !OVDCONDbits.POVD0;
+        if(OVDCONDbits.POVD0 == 0)
+        {
+            OVDCONSbits.POUT1 = 1;
+            OVDCONDbits.POVD1 = 0;
+        }
+        else
+        {
+            OVDCONSbits.POUT1 = 0;
+            OVDCONDbits.POVD1 = 0;    
+        }
 
-            OVDCONDbits.POVD0 = !OVDCONDbits.POVD0;
-            OVDCONDbits.POVD1 = !OVDCONDbits.POVD1;
-            OVDCONDbits.POVD4 = !OVDCONDbits.POVD4;
-            OVDCONDbits.POVD5 = !OVDCONDbits.POVD5;
+        OVDCONDbits.POVD4 = !OVDCONDbits.POVD4;
+        
+        if(OVDCONDbits.POVD4 == 0)
+        {
+            OVDCONSbits.POUT5 = 1;
+            OVDCONDbits.POVD5 = 0;
+        }
+        else
+        {
+            OVDCONSbits.POUT5 = 0;
+            OVDCONDbits.POVD5 = 0;    
+        }
     }
     i = m>>(16-SIZE_OF_SINTABLE_IN_POWER_OF_2);          // As the Table is of [64 = 2^6], need to shift the register m by (16 - 6 ) = 10 )
     
     if ( j >  n >>(16-SIZE_OF_SINTABLE_IN_POWER_OF_2) )
     {
             OVDCONDbits.POVD2 = !OVDCONDbits.POVD2;
-            OVDCONDbits.POVD3 = !OVDCONDbits.POVD3;
+            if(OVDCONDbits.POVD2 == 0){
+                OVDCONSbits.POUT3 = 1;
+                OVDCONDbits.POVD3 = 0;
+            }
+            else{
+                OVDCONSbits.POUT3 = 0;
+                OVDCONDbits.POVD3 = 0;    
+            }
     }
+    
     j=  n >>(16-SIZE_OF_SINTABLE_IN_POWER_OF_2);
 
     PDC0H = spwm[i]>>8;
@@ -229,7 +264,6 @@ void interrupt isr(void)
     PDC1L = spwm[j];
     PDC2H = spwm[i]>>8;
     PDC2L = spwm[i];
-    //i=i>>1;
     PIR3bits.PTIF = 0;
 }
 
@@ -238,6 +272,6 @@ void modulation_spwm(const unsigned int *in,unsigned int *out, unsigned char div
 {
 
     for(uint8_t z = 0; z < (SIZE_OF_SINETABLE-1);z++)
-        *(out + z) = (*(in + z))*PERIOD_FACTOR/2;
+        *(out + z) = (*(in + z))*PERIOD_FACTOR/10;
     
 }
