@@ -28,81 +28,48 @@
 
 // This is a guard condition so that contents of this file are not included
 // more than once.  
-#ifndef sinlookup
-#define	sinlookup
+#ifndef XC_HEADER_TEMPLATE_H
+#define	XC_HEADER_TEMPLATE_H
 
-//#include <xc.h> // include processor files - each processor file is guarded.  
-#define SIZE_OF_SINTABLE_IN_POWER_OF_2 6
-#define SIZE_OF_SINETABLE 64
+#include <xc.h>
+#include <pic18f4331.h>
+#include "sinlookup.h";
+#include <stdint.h>
+#include <stdbool.h>
 
-const unsigned int pwm[SIZE_OF_SINETABLE]=
-{
-0 	,
-0 	,
-50 	,
-75 	,
-99 	,
-124 	,
-148 	,
-172 	,
-195 	,
-218 	,
-240 	,
-262 	,
-283 	,
-304 	,
-324 	,
-342 	,
-361 	,
-378 	,
-394 	,
-410 	,
-424 	,
-437 	,
-450 	,
-461 	,
-471 	,
-480 	,
-488 	,
-495 	,
-500 	,
-504 	,
-508 	,
-509 	,
-510 	,
-509 	,
-508 	,
-504 	,
-500 	,
-495 	,
-488 	,
-480 	,
-471 	,
-461 	,
-450 	,
-437 	,
-424 	,
-410 	,
-394 	,
-378 	,
-361 	,
-342 	,
-324 	,
-304 	,
-283 	,
-262 	,
-240 	,
-218 	,
-195 	,
-172 	,
-148 	,
-124 	,
-99 	,
-75 	,
-50 	,
-0 	
 
-}
+
+#define CRYSTALL
+// TODO Insert appropriate #include <>
+
+// TODO Insert C++ class definitions if appropriate
+
+// TODO Insert declarations
+
+// Comment a function and leverage automatic documentation with slash star star
+/**
+    <p><b>Function prototype:</b></p>
+  
+    <p><b>Summary:</b></p>
+
+    <p><b>Description:</b></p>
+
+    <p><b>Precondition:</b></p>
+
+    <p><b>Parameters:</b></p>
+
+    <p><b>Returns:</b></p>
+
+    <p><b>Example:</b></p>
+    <code>
+ 
+    </code>
+
+    <p><b>Remarks:</b></p>
+ */
+// TODO Insert declarations or function prototypes (right here) to leverage 
+// live documentation
+
 #ifdef	__cplusplus
 extern "C" {
 #endif /* __cplusplus */

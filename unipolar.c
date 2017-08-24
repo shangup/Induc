@@ -1,11 +1,18 @@
 
 
 // PIC18F4331 Configuration Bit Settings
-
+#include "main.h"
 // 'C' source line config statements
 
 // CONFIG1H
-#pragma config OSC = HSPLL        // Oscillator Selection bits (Internal oscillator block, CLKO function on RA6 and port function on RA7)
+#ifdef CRYSTALL
+    #pragma config OSC = HSPLL        // Oscillator Selection bits (Internal oscillator block, CLKO function on RA6 and port function on RA7)
+    #define _XTAL_FREQ 40000000
+#else
+    #pragma config OSC = IRC
+    #define _XTAL_FREQ 8000000
+#endif
+
 #pragma config FCMEN = OFF      // Fail-Safe Clock Monitor Enable bit (Fail-Safe Clock Monitor disabled)
 #pragma config IESO = OFF       // Internal External Oscillator Switchover bit (Internal External Switchover mode disabled)
 
@@ -63,11 +70,23 @@
 // #pragma config statements should precede project file includes.
 // Use project enums instead of #define for ON and OFF.
 
-#include <xc.h>
-#include <pic18f4331.h>
-#include "sinlookup.h";
-#include <stdint.h>
-#include <stdbool.h>
+
+
+typedef struct {
+    bool ADC : 1;
+    bool buttonON;
+    bool buttonOFF;
+} INTERRUPTS;
+
+typedef enum
+{
+    INIT, IDLE, MOTOR_START, MOTOR_STOP
+} STATES;
+
+INTERRUPTS flags;
+
+static void Init(void);
+static void temp_start(void);
 void modulation_spwm (const unsigned int *in,unsigned int *out, unsigned char div_fac);
 
 unsigned int period = 55*5;
@@ -88,15 +107,32 @@ unsigned int ADCResult=0;
 void main ()
 
 {
-    //OSCTUNEbits.TUN = 0x0F;
-    //OSCCONbits.IRCF = 7;
-    //while(!OSCCONbits.IOFS ==1);
-     while(!OSCCONbits.OSTS ==1);
+STATES mainState = INIT; 
+#ifdef CRYSTALL
+    while(!OSCCONbits.OSTS ==1);
+#else
+    OSCTUNEbits.TUN = 0x0F;
+    OSCCONbits.IRCF = 7;
+    while(!OSCCONbits.IOFS ==1);
+#endif
     
-    
-    
-    
-    TRISAbits.TRISA0 = 1;
+    switch(mainState)
+    {
+        case INIT:
+            Init();
+            mainState = IDLE;
+            break;
+        case IDLE:
+            mainState = MOTOR_START;
+            break;
+        case MOTOR_START:
+            temp_start();
+            break;
+    }
+}
+
+void Init(){
+        TRISAbits.TRISA0 = 1;
     ANSEL0bits.ANS0 = 1;
     ADCHS &= 0xFC ; 
     ADCON0 = 0x20 ; // Continous; Single channel mode enable; Single channed mode 1 ; 0;0
@@ -144,37 +180,24 @@ void main ()
     __delay_ms(10);
     PTCON1bits.PTEN = 1; // Enable PWM module
     ADCON0bits.GO = 1;
-    while(1)
-    {
-     
+}
+
+void temp_start(){
         while(!PIR1bits.ADIF);
         inc = 1 + ADRESH;           // Transfering only the most 8 MSBs
         PIR1bits.ADIF = 0;  
         LATDbits.LATD0 = !(LATDbits.LATD0);
-        
-        /*
-    while(!PIR3bits.PTIF);
-    
-    i++;
-    PDC0H = spwm[i]>>8;
-    PDC0L = spwm[i];
-    if(i==127)
-        i=0;
-    PIR3bits.PTIF = 0;
-    */
-    
-    }
 }
+
+
 void interrupt isr(void)
 {
     m=m+(inc*2);
     n = m + 2*16384;
-    //flag;
+    
     if ( i > m>>(16-SIZE_OF_SINTABLE_IN_POWER_OF_2) )
     {
-        /*flag[0]++;
-        if(flag & 0x01)
-        {*/
+
             OVDCONDbits.POVD0 = !OVDCONDbits.POVD0;
             OVDCONDbits.POVD1 = !OVDCONDbits.POVD1;
             OVDCONDbits.POVD4 = !OVDCONDbits.POVD4;
@@ -184,24 +207,11 @@ void interrupt isr(void)
     
     if ( j >  n >>(16-SIZE_OF_SINTABLE_IN_POWER_OF_2) )
     {
-        /*flag[0]++;
-        if(flag & 0x01)
-        {*/
             OVDCONDbits.POVD2 = !OVDCONDbits.POVD2;
             OVDCONDbits.POVD3 = !OVDCONDbits.POVD3;
     }
     j=  n >>(16-SIZE_OF_SINTABLE_IN_POWER_OF_2);
 
-   // if ( k > ((unsigned int)(m)>>(16-SIZE_OF_SINTABLE_IN_POWER_OF_2)) )
-    //{
-        /*flag[0]++;
-        if(flag & 0x01)
-        {*/
-     //       OVDCONDbits.POVD4 = !OVDCONDbits.POVD4;
-     //       OVDCONDbits.POVD5 = !OVDCONDbits.POVD5;
-    //}
-    
-    
     PDC0H = spwm[i]>>8;
     PDC0L = spwm[i];
     PDC1H = spwm[j]>>8;
