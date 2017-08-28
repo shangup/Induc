@@ -13,13 +13,37 @@
     #define _XTAL_FREQ 8000000
 #endif
 
-#ifdef RESISTOR
-#define DUTY_RED_FACTOR 1
-#else
-#define DUTY_RED_FACTOR 4
+#define FREQ_4545 4545
+#define SET_FREQ   FREQ_4545
+
+// In Hz.
+#define MAX_FREQ 60
+#define MIN_FREQ 25
+#define RATED_FREQ 50
+
+// Current
+#define AMP_VOLT_CONV 2 // 2AMP per Volt
+#define MAX_CURRENT 10 // Need to make a fuction as this is an instataneosu current.
+#define CYCLE_AVG SIZE_OF_SINETABLE
+
+
+#ifdef POT_BASED_FREQVOLT 
+#define MATCH_SPEED 10 // FOR NOW A RANDOM NUMBER. THIS IS TO slowly changingn
+// the frequenct and voltage
 #endif
 
+
+// Voltage
+#define REF_VOLTAGE 220
+#define MAX_VOLTAGE 220 //(IN DIVISIBLE OF 2power) NOT ACTUAL, need to be tested.
+#define MIN_VOLTAGE (MAX_VOLTAGE/2)
+#define Q_VOLTAGE 5  // I GUESS THE COMPARATOR WORKS ON PERIOD TIMES 4 : *NEED TO MAKE A GENERALISE CODE*
+#define MAX_VOLT_FACT MAX_VOLTAGE/REF_VOLTAGE
 #define PERIOD_FACTOR  ((_XTAL_FREQ)/(8000000))
+
+#if(SET_FREQ == FREQ_4545)
+#define PERIOD 220 // 220, For 4545
+#endif
 
 #pragma config FCMEN = OFF      // Fail-Safe Clock Monitor Enable bit (Fail-Safe Clock Monitor disabled)
 #pragma config IESO = OFF       // Internal External Oscillator Switchover bit (Internal External Switchover mode disabled)
@@ -77,7 +101,18 @@
 
 // #pragma config statements should precede project file includes.
 // Use project enums instead of #define for ON and OFF.
+typedef struct {
+    uint8_t voltQ7; // (MIN_VOLTAGE/MAXVOTLAGE)/(128))
+    uint16_t accum_m;
+    uint16_t accum_n;
+    uint8_t increment;
+    uint8_t uvw[3];
+    //uint16_t Voltuvw[3] =0;
+}Modulate;
 
+
+
+Modulate modulate;
 
 
 typedef struct {
@@ -95,9 +130,9 @@ INTERRUPTS flags;
 
 static void Init(void);
 static void temp_start(void);
-void modulation_spwm (const unsigned int *in,unsigned int *out, unsigned char div_fac);
+void ModulateSPWM (const unsigned int *in,unsigned int *out, unsigned char div_fac);
 
-unsigned int period = 220*PERIOD_FACTOR; // <= NEED TO BE FUCTION OF XTAL
+unsigned int period = PERIOD*PERIOD_FACTOR; // <= NEED TO BE FUCTION OF XTAL CURRENT 220 for 4.54kHz
 unsigned int dutyy = 00; // multiply by 4, by own
 unsigned char i=0;
 unsigned char j=0;
@@ -106,6 +141,7 @@ unsigned int inc = 128; // Frequency SPWM manupilator
 unsigned int m = 0;
 unsigned int n = 0;
 uint16_t spwm[64] = {0};
+//uint16_t SPWM_buffer[64] = {0};
 
 unsigned char flag[3] = {0};
 //static unsigned int spwm[SIZE_OF_SINETABLE] ={0};
@@ -115,6 +151,16 @@ unsigned int ADCResult=0;
 void main ()
 
 {
+    
+    modulate.voltQ7 = 64; // (MIN_VOLTAGE/MAXVOTLAGE)/(128))
+    modulate.accum_m = 0;
+    modulate.accum_n = 0;
+    modulate.increment = 0;
+    modulate.uvw[0] = 0;
+    modulate.uvw[1] = 0;
+    modulate.uvw[2] = 0;
+    
+    
 STATES mainState = INIT; 
 #ifdef CRYSTALL
     while(!OSCCONbits.OSTS ==1);
@@ -123,7 +169,7 @@ STATES mainState = INIT;
     OSCTUNEbits.TUN = 0x0F;
     OSCCONbits.IRCF = 7;
     while(!OSCCONbits.IOFS ==1);
-    flags.ADC = 0;
+    flags.ADC = 1;
 #endif
     while(1)
     {
@@ -171,7 +217,7 @@ static void Init(){
     PTPERL = period;// PTPER 55
     PTPERH = period >> 8;
     
-    modulation_spwm( pwm, spwm, 2);
+    //ModulateSPWM( pwm, spwm, 2);
             
     PDC0H = spwm[0]>>8;
     PDC0L = spwm[0];
@@ -210,7 +256,8 @@ static void temp_start()
     if(flags.ADC == 1)
     {
         while(!PIR1bits.ADIF);       
-        inc = 1 + ADRESH;           // Transfering only the most 8 MSBs
+        inc = ADRESH;           // Transfering only the most 8 MSBs
+        inc = inc*3;
     }
     else 
         inc = 500;
@@ -221,8 +268,19 @@ static void temp_start()
 
 void interrupt isr(void)
 {
-    m=m+(inc*2);
+    uint16_t buff_voltage = 0;
+    m = m+inc+720;   // (4545/Min_freq) <- intersect times.
+                    // 65536/ (Intersect time)) <- Increment Values
+    
+   
     n = m + 2*16384;
+    buff_voltage = 64 + (inc/11); // Actually it should be 11.25
+    if (buff_voltage > 128)
+        buff_voltage = 128;
+    buff_voltage = buff_voltage*55;      // Because PERIOD IS 220 in this case
+    buff_voltage = buff_voltage/128;   // originally Doont need this. just copy
+
+    modulate.voltQ7 = buff_voltage;
     if ( i > m>>(16-SIZE_OF_SINTABLE_IN_POWER_OF_2) )
     {
         OVDCONDbits.POVD0 = !OVDCONDbits.POVD0;
@@ -266,21 +324,33 @@ void interrupt isr(void)
     }
     
     j=  n >>(16-SIZE_OF_SINTABLE_IN_POWER_OF_2);
-
+/*
     PDC0H = spwm[i]>>8;
     PDC0L = spwm[i];
     PDC1H = spwm[j]>>8;
     PDC1L = spwm[j];
     PDC2H = spwm[i]>>8;
     PDC2L = spwm[i];
+*/
+    // LATER change the variable i and j 
+    uint16_t Vabc[3];
+    Vabc[0] = (pwm[i]*modulate.voltQ7)>>Q_VOLTAGE;
+    PDC0H = Vabc[0] >>8;
+    PDC0L = Vabc[0] ;
+    PDC2H = Vabc[0] >>8;
+    PDC2L = Vabc[0] ;
+    Vabc[0] = (pwm[j]*modulate.voltQ7)>>Q_VOLTAGE;
+    PDC1H = Vabc[0]>>8;
+    PDC1L = Vabc[0];
+    
     PIR3bits.PTIF = 0;
 }
 
 
-void modulation_spwm(const unsigned int *in,unsigned int *out, unsigned char div_fac)
+void ModulateSPWM(const unsigned int *in,unsigned int *out, unsigned char div_fac)
 {
     for(uint8_t z = 0; z < (SIZE_OF_SINETABLE-1);z++)
     {
-        *(out + z) = ((*(in + z))*PERIOD_FACTOR/10)*DUTY_RED_FACTOR;
+        *(out + z) = ((*(in + z))*PERIOD_FACTOR/10)*MAX_VOLT_FACT;
     }
 }
