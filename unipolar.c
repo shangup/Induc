@@ -5,9 +5,9 @@
 // 'C' source line config statements
 
 // CONFIG1H
-#define _XTAL_FREQ 8000000
+#define _XTAL_FREQ 40000000
 
-#if _XTAL_FREQ== 40000000
+#if _XTAL_FREQ == 40000000
     #pragma config OSC = HSPLL        // Oscillator Selection bits (Internal oscillator block, CLKO function on RA6 and port function on RA7)
 #else
     #pragma config OSC = IRC
@@ -110,8 +110,12 @@ typedef struct {
     //uint16_t Voltuvw[3] =0;
 }Modulate;
 
+typedef struct{
+    uint16_t VoltClckComp;
+    
+}Comp;
 
-
+Comp compensate;
 Modulate modulate;
 
 
@@ -132,7 +136,8 @@ static void Init(void);
 static void temp_start(void);
 void ModulateSPWM (const unsigned int *in,unsigned int *out, unsigned char div_fac);
 
-unsigned int period = PERIOD*PERIOD_FACTOR; // <= NEED TO BE FUCTION OF XTAL CURRENT 220 for 4.54kHz
+unsigned int period = (SET_FREQ*8); // <= NEED TO BE FUCTION OF XTAL CURRENT 220 for 4.54kHz
+//unsigned int period = (uint16_t)((uint32_t)_XTAL_FREQ/period); // <= NEED TO BE FUCTION OF XTAL CURRENT 220 for 4.54kHz
 unsigned int dutyy = 00; // multiply by 4, by own
 unsigned char i=0;
 unsigned char j=0;
@@ -151,7 +156,8 @@ unsigned int ADCResult=0;
 void main ()
 
 {
-    
+    period = (uint16_t)((uint32_t)_XTAL_FREQ/period);
+    compensate.VoltClckComp = period>>2;
     modulate.voltQ7 = 64; // (MIN_VOLTAGE/MAXVOTLAGE)/(128))
     modulate.accum_m = 0;
     modulate.accum_n = 0;
@@ -162,7 +168,7 @@ void main ()
     
     
 STATES mainState = INIT; 
-#ifdef CRYSTALL
+#if _XTAL_FREQ == 40000000
     while(!OSCCONbits.OSTS ==1);
     flags.ADC = 1;
 #else
@@ -247,7 +253,7 @@ static void Init(){
     INTCONbits.GIE = 1; // Enable Global Interrupt
     INTCONbits.PEIE = 1;
 
-
+   // PTCON0bits.PTOPS = 0x00;
     ADCON0bits.ADON = 1;
     __delay_ms(10);
     PTCON1bits.PTEN = 1; // Enable PWM module
@@ -256,104 +262,114 @@ static void Init(){
 
 static void temp_start()
 {
-    if(flags.ADC == 1)
+    if(flags.ADC == 0)
     {
         while(!PIR1bits.ADIF);       
         inc = ADRESH;           // Transfering only the most 8 MSBs
-        inc = inc*3;
+        inc = inc*4;
+        //inc = 200;
         PIR1bits.ADIF = 0; 
     }
     else 
-        inc = 500;
+        //inc = 500;
         LED_D2_TEMP ^= 1;
 }
 
 
 void interrupt isr(void)
 {
+
     if(PIR3bits.PTIF == 1){
-    uint16_t buff_voltage = 0;
-    uint16_t m_past,n_past;
-    m_past = m;
-    n_past = n;
-    inc  += 720;
-    //inc = inc*2;
-    m = m+inc;   // (4545/Min_freq) <- intersect times.
-                    // 65536/ (Intersect time)) <- Increment Values
-    
-   
-    n = m + 2*16384;
-    buff_voltage = 64 + (inc/11); // Actually it should be 11.25
-    if (buff_voltage > 128)
-        buff_voltage = 128;
-    buff_voltage = buff_voltage*55;      // Because PERIOD IS 220 in this case
-    buff_voltage = buff_voltage/128;   // originally Doont need this. just copy
+        uint16_t buff_voltage = 0;
+        uint16_t m_past,n_past;
+        m_past = m;
+        n_past = n;
+        //inc  += 720;
+        //inc = inc*2;
+        m = m+inc+720;   // (4545/Min_freq) <- intersect times.
+                        // 65536/ (Intersect time)) <- Increment Values
 
-    modulate.voltQ7 = buff_voltage;
-    if ( m_past > m)
-    {
-        OVDCONDbits.POVD0 = !OVDCONDbits.POVD0;
-        if(OVDCONDbits.POVD0 == 0)
-        {
-            OVDCONSbits.POUT1 = 1;
-            OVDCONDbits.POVD1 = 0;
-        }
-        else
-        {
-            OVDCONSbits.POUT1 = 0;
-            OVDCONDbits.POVD1 = 0;    
-        }
+        modulate.uvw[0] = m;
+        n = m + 2*16384;
+        buff_voltage = 64 +  (inc/11); // Actually it should be 11.25
+        //buff_voltage = 64 + (inc/11); // Actually it should be 11.25
 
-        OVDCONDbits.POVD4 = !OVDCONDbits.POVD4;
-        
-        if(OVDCONDbits.POVD4 == 0)
+        if (buff_voltage > 128)
+            buff_voltage = 128;
+
+        buff_voltage = buff_voltage*compensate.VoltClckComp;      // Because PERIOD IS 220 in this case
+        buff_voltage = buff_voltage>>(7+2);   // originally Doont need this. just copy
+
+        modulate.voltQ7 = buff_voltage;
+        if (i > m>>(16-SIZE_OF_SINTABLE_IN_POWER_OF_2))
         {
-            OVDCONSbits.POUT5 = 1;
-            OVDCONDbits.POVD5 = 0;
+            OVDCONDbits.POVD0 = !OVDCONDbits.POVD0;
+            if(OVDCONDbits.POVD0 == 0)
+            {
+                OVDCONSbits.POUT1 = 1;
+                OVDCONDbits.POVD1 = 0;
+            }
+            else
+            {
+                OVDCONSbits.POUT1 = 0;
+                OVDCONDbits.POVD1 = 0;    
+            }
+
+            OVDCONDbits.POVD4 = !OVDCONDbits.POVD4;
+
+            if(OVDCONDbits.POVD4 == 0)
+            {
+                OVDCONSbits.POUT5 = 1;
+                OVDCONDbits.POVD5 = 0;
+            }
+            else
+            {
+                OVDCONSbits.POUT5 = 0;
+                OVDCONDbits.POVD5 = 0;    
+            }
+            inc = ADRESH;
+            inc = inc*4;
         }
-        else
+        i = m>>(16-SIZE_OF_SINTABLE_IN_POWER_OF_2);          // As the Table is of [64 = 2^6], need to shift the register m by (16 - 6 ) = 10 )
+
+        if ( j>  n >>(16-SIZE_OF_SINTABLE_IN_POWER_OF_2))
         {
-            OVDCONSbits.POUT5 = 0;
-            OVDCONDbits.POVD5 = 0;    
+                OVDCONDbits.POVD2 = !OVDCONDbits.POVD2;
+                if(OVDCONDbits.POVD2 == 0){
+                    OVDCONSbits.POUT3 = 1;
+                    OVDCONDbits.POVD3 = 0;
+                }
+                else{
+                    OVDCONSbits.POUT3 = 0;
+                    OVDCONDbits.POVD3 = 0;    
+                }
         }
-    }
-    i = m>>(16-SIZE_OF_SINTABLE_IN_POWER_OF_2);          // As the Table is of [64 = 2^6], need to shift the register m by (16 - 6 ) = 10 )
-    
-    if ( n_past > n)
-    {
-            OVDCONDbits.POVD2 = !OVDCONDbits.POVD2;
-            if(OVDCONDbits.POVD2 == 0){
-                OVDCONSbits.POUT3 = 1;
-                OVDCONDbits.POVD3 = 0;
-            }
-            else{
-                OVDCONSbits.POUT3 = 0;
-                OVDCONDbits.POVD3 = 0;    
-            }
-    }
-    
-    j=  n >>(16-SIZE_OF_SINTABLE_IN_POWER_OF_2);
-/*
-    PDC0H = spwm[i]>>8;
-    PDC0L = spwm[i];
-    PDC1H = spwm[j]>>8;
-    PDC1L = spwm[j];
-    PDC2H = spwm[i]>>8;
-    PDC2L = spwm[i];
-*/
-    // LATER change the variable i and j 
-    uint16_t Vabc[3];
-    Vabc[0] = (pwm[i]*modulate.voltQ7)>>Q_VOLTAGE;
-    PDC0H = Vabc[0] >>8;
-    PDC0L = Vabc[0] ;
-    PDC2H = Vabc[0] >>8;
-    PDC2L = Vabc[0] ;
-    Vabc[0] = (pwm[j]*modulate.voltQ7)>>Q_VOLTAGE;
-    PDC1H = Vabc[0]>>8;
-    PDC1L = Vabc[0];
-    
-    PIR3bits.PTIF = 0;
-    }
+        modulate.uvw[1] = m;
+        j=  n >>(16-SIZE_OF_SINTABLE_IN_POWER_OF_2);
+    /*
+        PDC0H = spwm[i]>>8;
+        PDC0L = spwm[i];
+        PDC1H = spwm[j]>>8;
+        PDC1L = spwm[j];
+        PDC2H = spwm[i]>>8;
+        PDC2L = spwm[i];
+    */
+        // LATER change the variable i and j 
+        uint16_t Vabc[3];
+        Vabc[0] = (pwm[i]*modulate.voltQ7)>>(Q_VOLTAGE-2); 
+        // Already compensated 2^2 above, REASON, 10-bit period register,buff_voltage for 
+        //1100 period is 275 (9-bit),, hence made it (9-2 bit); SIN TABLE has 9 bit table
+        // LOOSING VOLTAGE MODULATION RESOLUTION
+        PDC0H = Vabc[0] >>8;
+        PDC0L = Vabc[0] ;
+        PDC2H = Vabc[0] >>8;
+        PDC2L = Vabc[0] ;
+        Vabc[0] = (pwm[j]*modulate.voltQ7)>>(Q_VOLTAGE-2);
+        PDC1H = Vabc[0]>>8;
+        PDC1L = Vabc[0];
+
+        PIR3bits.PTIF = 0;
+        }
 }
 
 
