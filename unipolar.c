@@ -5,12 +5,12 @@
 // 'C' source line config statements
 
 // CONFIG1H
-#ifdef CRYSTALL
+#define _XTAL_FREQ 8000000
+
+#if _XTAL_FREQ== 40000000
     #pragma config OSC = HSPLL        // Oscillator Selection bits (Internal oscillator block, CLKO function on RA6 and port function on RA7)
-    #define _XTAL_FREQ 40000000
 #else
     #pragma config OSC = IRC
-    #define _XTAL_FREQ 8000000
 #endif
 
 #define FREQ_4545 4545
@@ -199,6 +199,7 @@ static void Init(){
     LED_D1_DIR = 0;
     LED_D2_DIR = 0;
     LED_D1_ON = 0;
+    
     TRISAbits.TRISA0 = 1;
     ANSEL0bits.ANS0 = 1;
     ADCHS &= 0xFC ; 
@@ -206,14 +207,16 @@ static void Init(){
     ADCON1 &= 0x2F; // Avref ; Fifo disabled
     ADCON2 = 0x7C; // Left Justified ; Aquisition time 64 TAD ; Clock Fosc/4
     PIR1bits.ADIF = 0; // A/D Flag 0
-    ADCON3 = 0x00 ; // Interrupt per word conversion ; Trigger disabled
+    
+    ADCON3 = 0xB0 ; // Interrupt per word conversion ; Trigger disabled, default 0x00
     
     
     OVDCONS = 0x00;
    
-    PTCON0 = 0x02;      // Post scaler TB 1/2 Cause of Center, and 1 for 40Mhz ; 
-    //TB input scaler 1; PTMOD = Up/   DOwn count 
-    // Currently post scaller is 2 to create lookup increment by 1 per (2 interaction))
+    PTCON0 = 0x02; 
+    // TIME BASE POST SCALER PTCON0[4:7] ; 
+    //INOPUT CLOCK SCALER [2:3] (1/4))
+    // PWM MODE, CONTINOUS [0:1] 
     PTPERL = period;// PTPER 55
     PTPERH = period >> 8;
     
@@ -238,9 +241,9 @@ static void Init(){
     PWMCON0bits.PWMEN = 4; // Enable all odd PWMs 1 3 5 PWMS
     OVDCOND = 0x9A;             // To make the FORCED OUTPUT alternating.
     
-    PIE3bits.PTIE = 1;
-   
+    PIE3bits.PTIE = 1; // TIME BASE INTERRUPT
     PIR3bits.PTIF = 0;
+    
     INTCONbits.GIE = 1; // Enable Global Interrupt
     INTCONbits.PEIE = 1;
 
@@ -258,18 +261,24 @@ static void temp_start()
         while(!PIR1bits.ADIF);       
         inc = ADRESH;           // Transfering only the most 8 MSBs
         inc = inc*3;
+        PIR1bits.ADIF = 0; 
     }
     else 
         inc = 500;
-        PIR1bits.ADIF = 0;  
         LED_D2_TEMP ^= 1;
 }
 
 
 void interrupt isr(void)
 {
+    if(PIR3bits.PTIF == 1){
     uint16_t buff_voltage = 0;
-    m = m+inc+720;   // (4545/Min_freq) <- intersect times.
+    uint16_t m_past,n_past;
+    m_past = m;
+    n_past = n;
+    inc  += 720;
+    //inc = inc*2;
+    m = m+inc;   // (4545/Min_freq) <- intersect times.
                     // 65536/ (Intersect time)) <- Increment Values
     
    
@@ -281,7 +290,7 @@ void interrupt isr(void)
     buff_voltage = buff_voltage/128;   // originally Doont need this. just copy
 
     modulate.voltQ7 = buff_voltage;
-    if ( i > m>>(16-SIZE_OF_SINTABLE_IN_POWER_OF_2) )
+    if ( m_past > m)
     {
         OVDCONDbits.POVD0 = !OVDCONDbits.POVD0;
         if(OVDCONDbits.POVD0 == 0)
@@ -310,7 +319,7 @@ void interrupt isr(void)
     }
     i = m>>(16-SIZE_OF_SINTABLE_IN_POWER_OF_2);          // As the Table is of [64 = 2^6], need to shift the register m by (16 - 6 ) = 10 )
     
-    if ( j >  n >>(16-SIZE_OF_SINTABLE_IN_POWER_OF_2) )
+    if ( n_past > n)
     {
             OVDCONDbits.POVD2 = !OVDCONDbits.POVD2;
             if(OVDCONDbits.POVD2 == 0){
@@ -344,6 +353,7 @@ void interrupt isr(void)
     PDC1L = Vabc[0];
     
     PIR3bits.PTIF = 0;
+    }
 }
 
 
