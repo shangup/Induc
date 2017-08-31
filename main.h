@@ -42,15 +42,16 @@
 
 
 
-#define LED_D1_DIR      TRISDbits.TRISD0 // LED D1 Using for ON/OFF state
+#define LED_D3_DIR      TRISDbits.TRISD2 // LED D1 Using for ON/OFF state
 #define LED_D2_DIR      TRISDbits.TRISD1 // LED D2 Using for TEMPERATURE_FAULT
-#define LED_D3_DIR      TRISDbits.TRISD2 // LED D3 Using for CURRENT_FAULT
+#define LED_D1_DIR      TRISDbits.TRISD0 // LED D3 Using for CURRENT_FAULT
+#define IPM_SW_DIR          TRISDbits.TRISD5
 
 
-#define LED_D1_ON       LATDbits.LATD0 // LED D1 Using for ON/OFF state
-#define LED_D2_TEMP     LATDbits.LATD1 // LED D2 Using for TEMPERATURE_FAULT
-#define LED_D3_IDC      LATDbits.LATD2 // LED D3 Using for CURRENT_FAULT
-
+#define LED_D3_ON       LATDbits.LATD2 // LED D1 Using for ON/OFF state
+#define LED_D2_IDC     LATDbits.LATD1 // LED D2 Using for TEMPERATURE_FAULT
+#define LED_D1_TEMP      LATDbits.LATD0 // LED D3 Using for CURRENT_FAULT
+#define IPM_SW          LATDbits.LATD5 // USE AS an FAULT OUTPUT
  
 
 // TODO Insert C++ class definitions if appropriate

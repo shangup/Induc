@@ -13,6 +13,11 @@
     #pragma config OSC = IRC
 #endif
 
+// OTHERS
+
+#define RISING_EDGE 1
+#define FALLING_EDGE 0
+
 #define FREQ_4545 4545
 #define SET_FREQ   FREQ_4545
 
@@ -121,8 +126,8 @@ Modulate modulate;
 
 typedef struct {
     bool ADC : 1;
-    bool buttonON;
-    bool buttonOFF;
+    bool buttonON_OFF;
+    bool FAULT;
 } INTERRUPTS;
 
 typedef enum
@@ -134,8 +139,8 @@ INTERRUPTS flags;
 
 static void Init(void);
 static void temp_start(void);
-void ModulateSPWM (const unsigned int *in,unsigned int *out, unsigned char div_fac);
 
+STATES mainState;
 unsigned int period = (SET_FREQ*8); // <= NEED TO BE FUCTION OF XTAL CURRENT 220 for 4.54kHz
 //unsigned int period = (uint16_t)((uint32_t)_XTAL_FREQ/period); // <= NEED TO BE FUCTION OF XTAL CURRENT 220 for 4.54kHz
 unsigned int dutyy = 00; // multiply by 4, by own
@@ -167,7 +172,7 @@ void main ()
     modulate.uvw[2] = 0;
     
     
-STATES mainState = INIT; 
+ mainState = INIT; 
 #if _XTAL_FREQ == 40000000
     while(!OSCCONbits.OSTS ==1);
     flags.ADC = 1;
@@ -177,34 +182,81 @@ STATES mainState = INIT;
     while(!OSCCONbits.IOFS ==1);
     flags.ADC = 1;
 #endif
+    LED_D3_DIR = 0;
+    LED_D2_DIR = 0;
+    LED_D1_DIR = 0;
+    IPM_SW_DIR = 0;
+            
+    LED_D3_ON = 0;
+    LED_D2_IDC = 0;
+    LED_D1_TEMP = 0;
+    IPM_SW = 1;
+    __delay_ms(500);
     while(1)
     {
         switch(mainState)
         {
             case INIT:
+                flags.FAULT = 1;
+                IPM_SW = 1;
+                
                 Init();
                 mainState = IDLE;
                 break;
             case IDLE:
-                // <- ADD here SW1 START button
-                mainState = MOTOR_START;
+                if(INTCONbits.INT0F == 1)
+                {
+                    LED_D3_ON = 1;
+                    INTCONbits.INT0F = 0;
+                    mainState = MOTOR_START;
+                }
                 break;
             case MOTOR_START:
-                // <- ADD HERE IF WANT TO STOP
-                // THEN make STATE = STOP
+                
                 temp_start();
+                while(mainState == MOTOR_START)
+                {
+                    if(INTCONbits.INT0F == 1)
+                    {
+                        mainState = MOTOR_STOP;
+                        INTCONbits.INT0IF = 0;
+                    }
+                }
                 break;
             case MOTOR_STOP:
+                
+                INTCONbits.GIE = 0; // Enable Global Interrupt
+                INTCONbits.PEIE = 0;
+                LED_D3_ON = 0;
+                OVDCONS = 0xAA; // DECEIDE FORCE STATE 
+                OVDCOND |= 0xAA;
+                __delay_ms(10);
+                OVDCOND = 0x00; // APPLY FORCED STATE When 0
+                __delay_ms(500);
+                //PTCON1bits.PTEN = 0; // Enable PWM module
+                ADCON0bits.ADON = 0;
+                mainState = INIT;
+                // NEED TO REINITIATE EVERYTHING
+                /*
+                OVDCONDbits.POVD0 = 0;
+                OVDCONDbits.POVD2 = 0;
+                OVDCONDbits.POVD4 = 0;
+                
+                OVDCONDbits.POVD0 = 0;
+                OVDCONDbits.POVD2 = 0;
+                OVDCONDbits.POVD4 = 0;
+                */
                 break;
         }
-        LED_D1_ON =(mainState==MOTOR_START);
+        if(flags.FAULT)
+            LED_D2_IDC = 1;
+        //LED_D1_ON =( mainState==MOTOR_START);
     }
 }
 
 static void Init(){
-    LED_D1_DIR = 0;
-    LED_D2_DIR = 0;
-    LED_D1_ON = 0;
+    PTCON1bits.PTEN = 0; // Enable PWM module
+    ADCON0bits.GO = 0;        
     
     TRISAbits.TRISA0 = 1;
     ANSEL0bits.ANS0 = 1;
@@ -226,7 +278,6 @@ static void Init(){
     PTPERL = period;// PTPER 55
     PTPERH = period >> 8;
     
-    //ModulateSPWM( pwm, spwm, 2);
             
     PDC0H = spwm[0]>>8;
     PDC0L = spwm[0];
@@ -237,18 +288,23 @@ static void Init(){
     
    // DTCON = 0x42; // DTPS = 01b; DT=000010b
     
-    TRISD &= 0xF8 ; // xxxx x000
-    LATD |= 0x07;
+    //TRISD &= 0xF8 ; // xxxx x000
+    //LATD |= 0x07;
     
     
     
     // Enabling and output pin configurations
     PWMCON0bits.PMOD = 15; // PWM0 and PWM1 Independent 
     PWMCON0bits.PWMEN = 4; // Enable all odd PWMs 1 3 5 PWMS
-    OVDCOND = 0x9A;             // To make the FORCED OUTPUT alternating.
+    OVDCOND = 0xAA;             // To make the FORCED OUTPUT alternating. // DEF 0x9A
     
-    PIE3bits.PTIE = 1; // TIME BASE INTERRUPT
     PIR3bits.PTIF = 0;
+    INTCONbits.INT0IF = 0;
+    PIE3bits.PTIE = 1; // TIME BASE INTERRUPT
+    
+    INTCON2bits.INTEDG0 = RISING_EDGE;
+    INTCONbits.INT0F = 0; 
+    INTCONbits.INT0IE = 0; // NO NEED TO ON THE INTTERUPT, AS NOT HIGH PRIOR
     
     INTCONbits.GIE = 1; // Enable Global Interrupt
     INTCONbits.PEIE = 1;
@@ -256,12 +312,14 @@ static void Init(){
    // PTCON0bits.PTOPS = 0x00;
     ADCON0bits.ADON = 1;
     __delay_ms(10);
-    PTCON1bits.PTEN = 1; // Enable PWM module
-    ADCON0bits.GO = 1;
+
 }
 
 static void temp_start()
 {
+    PTCON1bits.PTEN = 1; // Enable PWM module
+    ADCON0bits.GO = 1;
+    /*
     if(flags.ADC == 0)
     {
         while(!PIR1bits.ADIF);       
@@ -273,13 +331,15 @@ static void temp_start()
     else 
         //inc = 500;
         LED_D2_TEMP ^= 1;
+     * */
 }
 
 
 void interrupt isr(void)
 {
 
-    if(PIR3bits.PTIF == 1){
+    if(PIR3bits.PTIF == 1 && mainState == MOTOR_START )
+    {
         uint16_t buff_voltage = 0;
         uint16_t m_past,n_past;
         m_past = m;
@@ -334,15 +394,15 @@ void interrupt isr(void)
 
         if ( j>  n >>(16-SIZE_OF_SINTABLE_IN_POWER_OF_2))
         {
-                OVDCONDbits.POVD2 = !OVDCONDbits.POVD2;
-                if(OVDCONDbits.POVD2 == 0){
-                    OVDCONSbits.POUT3 = 1;
-                    OVDCONDbits.POVD3 = 0;
-                }
-                else{
-                    OVDCONSbits.POUT3 = 0;
-                    OVDCONDbits.POVD3 = 0;    
-                }
+            OVDCONDbits.POVD2 = !OVDCONDbits.POVD2;
+            if(OVDCONDbits.POVD2 == 0){
+                OVDCONSbits.POUT3 = 1;
+                OVDCONDbits.POVD3 = 0;
+            }
+            else{
+                OVDCONSbits.POUT3 = 0;
+                OVDCONDbits.POVD3 = 0;    
+            }
         }
         modulate.uvw[1] = m;
         j=  n >>(16-SIZE_OF_SINTABLE_IN_POWER_OF_2);
@@ -369,14 +429,5 @@ void interrupt isr(void)
         PDC1L = Vabc[0];
 
         PIR3bits.PTIF = 0;
-        }
-}
-
-
-void ModulateSPWM(const unsigned int *in,unsigned int *out, unsigned char div_fac)
-{
-    for(uint8_t z = 0; z < (SIZE_OF_SINETABLE-1);z++)
-    {
-        *(out + z) = ((*(in + z))*PERIOD_FACTOR/10)*MAX_VOLT_FACT;
     }
 }
