@@ -45,7 +45,7 @@
 #define LED_D3_DIR      TRISDbits.TRISD2 // LED D1 Using for ON/OFF state
 #define LED_D2_DIR      TRISDbits.TRISD1 // LED D2 Using for TEMPERATURE_FAULT
 #define LED_D1_DIR      TRISDbits.TRISD0 // LED D3 Using for CURRENT_FAULT
-#define IPM_SW_DIR          TRISDbits.TRISD5
+#define IPM_SW_DIR      TRISDbits.TRISD5
 
 
 #define LED_D3_ON       LATDbits.LATD2 // LED D1 Using for ON/OFF state

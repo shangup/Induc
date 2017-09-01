@@ -128,6 +128,8 @@ typedef struct {
     bool ADC : 1;
     bool buttonON_OFF;
     bool FAULT;
+    bool overflow_i;
+    bool overflow_j;
 } INTERRUPTS;
 
 typedef enum
@@ -138,7 +140,7 @@ typedef enum
 INTERRUPTS flags;
 
 static void Init(void);
-static void temp_start(void);
+//static void temp_start(void);
 
 STATES mainState;
 unsigned int period = (SET_FREQ*8); // <= NEED TO BE FUCTION OF XTAL CURRENT 220 for 4.54kHz
@@ -147,14 +149,6 @@ unsigned int dutyy = 00; // multiply by 4, by own
 unsigned char i=0;
 unsigned char j=0;
 unsigned char k=0;
-unsigned int inc = 128; // Frequency SPWM manupilator
-unsigned int m = 0;
-unsigned int n = 0;
-uint16_t spwm[64] = {0};
-//uint16_t SPWM_buffer[64] = {0};
-
-unsigned char flag[3] = {0};
-//static unsigned int spwm[SIZE_OF_SINETABLE] ={0};
 unsigned int ADCResult=0;
 
 
@@ -162,17 +156,7 @@ void main ()
 
 {
     period = (uint16_t)((uint32_t)_XTAL_FREQ/period);
-    compensate.VoltClckComp = period>>2;
-    modulate.voltQ7 = 64; // (MIN_VOLTAGE/MAXVOTLAGE)/(128))
-    modulate.accum_m = 0;
-    modulate.accum_n = 0;
-    modulate.increment = 0;
-    modulate.uvw[0] = 0;
-    modulate.uvw[1] = 0;
-    modulate.uvw[2] = 0;
-    
-    
- mainState = INIT; 
+    mainState = INIT; 
 #if _XTAL_FREQ == 40000000
     while(!OSCCONbits.OSTS ==1);
     flags.ADC = 1;
@@ -185,12 +169,14 @@ void main ()
     LED_D3_DIR = 0;
     LED_D2_DIR = 0;
     LED_D1_DIR = 0;
+    IPM_SW = 1;
     IPM_SW_DIR = 0;
-            
+    IPM_SW = 1;
+        
     LED_D3_ON = 0;
     LED_D2_IDC = 0;
     LED_D1_TEMP = 0;
-    IPM_SW = 1;
+
     __delay_ms(500);
     while(1)
     {
@@ -198,22 +184,27 @@ void main ()
         {
             case INIT:
                 flags.FAULT = 1;
-                IPM_SW = 1;
-                
+                IPM_SW = 1;                
                 Init();
                 mainState = IDLE;
                 break;
             case IDLE:
-                if(INTCONbits.INT0F == 1)
+                ADCON0bits.GO = 1;
+                if(INTCONbits.INT0F == 1 && PIR1bits.ADIF)
                 {
+                    PIR1bits.ADIF = 0;
+                    modulate.increment = 0;
                     LED_D3_ON = 1;
                     INTCONbits.INT0F = 0;
                     mainState = MOTOR_START;
+                    PTCON1bits.PTEN = 1; // Enable PWM module
+                    __delay_ms(500);
+                    IPM_SW = 0; 
                 }
                 break;
             case MOTOR_START:
                 
-                temp_start();
+                //temp_start();
                 while(mainState == MOTOR_START)
                 {
                     if(INTCONbits.INT0F == 1)
@@ -228,24 +219,17 @@ void main ()
                 INTCONbits.GIE = 0; // Enable Global Interrupt
                 INTCONbits.PEIE = 0;
                 LED_D3_ON = 0;
+                OVDCONS = 0x00; // DECEIDE FORCE STATE
+                OVDCOND = 0x00;
+                __delay_ms(1);
+                
                 OVDCONS = 0xAA; // DECEIDE FORCE STATE 
-                OVDCOND |= 0xAA;
-                __delay_ms(10);
                 OVDCOND = 0x00; // APPLY FORCED STATE When 0
                 __delay_ms(500);
                 //PTCON1bits.PTEN = 0; // Enable PWM module
                 ADCON0bits.ADON = 0;
                 mainState = INIT;
                 // NEED TO REINITIATE EVERYTHING
-                /*
-                OVDCONDbits.POVD0 = 0;
-                OVDCONDbits.POVD2 = 0;
-                OVDCONDbits.POVD4 = 0;
-                
-                OVDCONDbits.POVD0 = 0;
-                OVDCONDbits.POVD2 = 0;
-                OVDCONDbits.POVD4 = 0;
-                */
                 break;
         }
         if(flags.FAULT)
@@ -254,7 +238,15 @@ void main ()
     }
 }
 
-static void Init(){
+static void Init()
+{
+    compensate.VoltClckComp = period>>2;
+    modulate.voltQ7 = 64; // (MIN_VOLTAGE/MAXVOTLAGE)/(128))
+    modulate.accum_m = 0;
+    modulate.accum_n = 0;
+    modulate.uvw[0] = 0;
+    modulate.uvw[1] = 0;
+    modulate.uvw[2] = 0;
     PTCON1bits.PTEN = 0; // Enable PWM module
     ADCON0bits.GO = 0;        
     
@@ -279,19 +271,12 @@ static void Init(){
     PTPERH = period >> 8;
     
             
-    PDC0H = spwm[0]>>8;
-    PDC0L = spwm[0];
-    PDC1H = spwm[SIZE_OF_SINETABLE/4]>>8;
-    PDC1L = spwm[SIZE_OF_SINETABLE/4];
-    PDC2H = spwm[SIZE_OF_SINETABLE/2]>>8;
-    PDC2L = spwm[SIZE_OF_SINETABLE/2];
-    
-   // DTCON = 0x42; // DTPS = 01b; DT=000010b
-    
-    //TRISD &= 0xF8 ; // xxxx x000
-    //LATD |= 0x07;
-    
-    
+    PDC0H = pwm[0]>>8;
+    PDC0L = pwm[0];
+    PDC1H = pwm[SIZE_OF_SINETABLE/4]>>8;
+    PDC1L = pwm[SIZE_OF_SINETABLE/4];
+    PDC2H = pwm[SIZE_OF_SINETABLE/2]>>8;
+    PDC2L = pwm[SIZE_OF_SINETABLE/2];
     
     // Enabling and output pin configurations
     PWMCON0bits.PMOD = 15; // PWM0 and PWM1 Independent 
@@ -315,25 +300,12 @@ static void Init(){
 
 }
 
-static void temp_start()
+/*static void temp_start()
 {
     PTCON1bits.PTEN = 1; // Enable PWM module
-    ADCON0bits.GO = 1;
-    /*
-    if(flags.ADC == 0)
-    {
-        while(!PIR1bits.ADIF);       
-        inc = ADRESH;           // Transfering only the most 8 MSBs
-        inc = inc*4;
-        //inc = 200;
-        PIR1bits.ADIF = 0; 
-    }
-    else 
-        //inc = 500;
-        LED_D2_TEMP ^= 1;
-     * */
+    //ADCON0bits.GO = 1;
 }
-
+*/
 
 void interrupt isr(void)
 {
@@ -342,27 +314,29 @@ void interrupt isr(void)
     {
         uint16_t buff_voltage = 0;
         uint16_t m_past,n_past;
-        m_past = m;
-        n_past = n;
+        m_past = modulate.accum_m;
+        n_past = modulate.accum_n;
         //inc  += 720;
         //inc = inc*2;
-        m = m+inc+720;   // (4545/Min_freq) <- intersect times.
+        modulate.accum_m += (modulate.increment*4);   // (4545/Min_freq) <- intersect times.
+        modulate.accum_m = modulate.accum_m+720;   // (4545/Min_freq) <- intersect times.
                         // 65536/ (Intersect time)) <- Increment Values
-
-        modulate.uvw[0] = m;
-        n = m + 2*16384;
-        buff_voltage = 64 +  (inc/11); // Actually it should be 11.25
+        modulate.accum_n = modulate.accum_m + 2*16384;
+        buff_voltage = 64 +  (modulate.increment/11)*4; // Actually it should be 11.25
         //buff_voltage = 64 + (inc/11); // Actually it should be 11.25
 
         if (buff_voltage > 128)
-            buff_voltage = 128;
+             buff_voltage = 128;
 
         buff_voltage = buff_voltage*compensate.VoltClckComp;      // Because PERIOD IS 220 in this case
         buff_voltage = buff_voltage>>(7+2);   // originally Doont need this. just copy
 
         modulate.voltQ7 = buff_voltage;
-        if (i > m>>(16-SIZE_OF_SINTABLE_IN_POWER_OF_2))
+        if (m_past > modulate.accum_m )
+            flags.overflow_i = 1;
+        if( i < 10 && flags.overflow_i)
         {
+            flags.overflow_i = 0;
             OVDCONDbits.POVD0 = !OVDCONDbits.POVD0;
             if(OVDCONDbits.POVD0 == 0)
             {
@@ -371,49 +345,70 @@ void interrupt isr(void)
             }
             else
             {
+                //PDC0L = 0;
                 OVDCONSbits.POUT1 = 0;
                 OVDCONDbits.POVD1 = 0;    
             }
 
             OVDCONDbits.POVD4 = !OVDCONDbits.POVD4;
 
-            if(OVDCONDbits.POVD4 == 0)
+            if(OVDCONDbits.POVD0 == 1)
             {
                 OVDCONSbits.POUT5 = 1;
                 OVDCONDbits.POVD5 = 0;
             }
             else
             {
+                //PDC2L = 0;
                 OVDCONSbits.POUT5 = 0;
                 OVDCONDbits.POVD5 = 0;    
             }
-            inc = ADRESH;
-            inc = inc*4;
+            if(PIR1bits.ADIF)
+            {
+                PIR1bits.ADIF = 0;
+                int diff_inc = modulate.increment - (uint8_t)ADRESH;
+                if (diff_inc < -5)
+                {
+                    modulate.increment++;
+                }
+                else if(diff_inc > 5)
+                    modulate.increment--;
+            }
         }
-        i = m>>(16-SIZE_OF_SINTABLE_IN_POWER_OF_2);          // As the Table is of [64 = 2^6], need to shift the register m by (16 - 6 ) = 10 )
-
-        if ( j>  n >>(16-SIZE_OF_SINTABLE_IN_POWER_OF_2))
+                // As the Table is of [64 = 2^6], need to shift the register m by (16 - 6 ) = 10 )
+        
+        i = modulate.accum_m>>(16-SIZE_OF_SINTABLE_IN_POWER_OF_2); 
+        //if ( j>  modulate.accum_n >>(16-SIZE_OF_SINTABLE_IN_POWER_OF_2))
+        
+        if ( n_past>  modulate.accum_n )
+            flags.overflow_j = 1;
+        
+        if(j < 10 && flags.overflow_j)
         {
+            flags.overflow_j = 0;
             OVDCONDbits.POVD2 = !OVDCONDbits.POVD2;
             if(OVDCONDbits.POVD2 == 0){
                 OVDCONSbits.POUT3 = 1;
                 OVDCONDbits.POVD3 = 0;
             }
             else{
+                //flags.overflow_j = 1;
+                //PDC1L = 0;
                 OVDCONSbits.POUT3 = 0;
                 OVDCONDbits.POVD3 = 0;    
             }
         }
-        modulate.uvw[1] = m;
-        j=  n >>(16-SIZE_OF_SINTABLE_IN_POWER_OF_2);
-    /*
-        PDC0H = spwm[i]>>8;
-        PDC0L = spwm[i];
-        PDC1H = spwm[j]>>8;
-        PDC1L = spwm[j];
-        PDC2H = spwm[i]>>8;
-        PDC2L = spwm[i];
-    */
+        j=  modulate.accum_n >>(16-SIZE_OF_SINTABLE_IN_POWER_OF_2);
+        /*
+        if(flags.overflow_j)
+        {
+            modulate.accum_n &= 0x01ff;
+            flags.overflow_j = 0;
+            //i = 0;
+        }
+        */
+        
+        
         // LATER change the variable i and j 
         uint16_t Vabc[3];
         Vabc[0] = (pwm[i]*modulate.voltQ7)>>(Q_VOLTAGE-2); 
