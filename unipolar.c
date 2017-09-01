@@ -350,7 +350,7 @@ void interrupt isr(void)
                 OVDCONDbits.POVD1 = 0;    
             }
 
-            OVDCONDbits.POVD4 = !OVDCONDbits.POVD4;
+            OVDCONDbits.POVD4 = !OVDCONDbits.POVD0;
 
             if(OVDCONDbits.POVD0 == 1)
             {
