@@ -320,7 +320,7 @@ void interrupt isr(void)
         n_past = modulate.accum_n;
         //inc  += 720;
         //inc = inc*2;
-        modulate.accum_m += (1024);   // (4545/Min_freq) <- intersect times.
+        modulate.accum_m += (modulate.increment*4);   // (4545/Min_freq) <- intersect times.
         modulate.accum_m = modulate.accum_m+720;   // (4545/Min_freq) <- intersect times.
                         // 65536/ (Intersect time)) <- Increment Values
         modulate.accum_n = modulate.accum_m + 2*16384;
