@@ -130,6 +130,7 @@ typedef struct {
     bool FAULT;
     bool overflow_i;
     bool overflow_j;
+    bool extend;
 } INTERRUPTS;
 
 typedef enum
@@ -247,6 +248,7 @@ static void Init()
     modulate.uvw[0] = 0;
     modulate.uvw[1] = 0;
     modulate.uvw[2] = 0;
+    flags.extend = 0;
     PTCON1bits.PTEN = 0; // Enable PWM module
     ADCON0bits.GO = 0;        
     
@@ -330,26 +332,39 @@ void interrupt isr(void)
 
         buff_voltage = buff_voltage*compensate.VoltClckComp;      // Because PERIOD IS 220 in this case
         buff_voltage = buff_voltage>>(7+2);   // originally Doont need this. just copy
-
+        if(flags.extend)
+        {
+            if(OVDCONDbits.POVD0 == 1)
+            {
+                OVDCONSbits.POUT1 = 0;
+            }
+            else
+            {
+                OVDCONSbits.POUT5 = 0;
+            }
+            flags.extend = 0;
+        }
         modulate.voltQ7 = buff_voltage;
         if (m_past > modulate.accum_m )
             flags.overflow_i = 1;
         if( i < 10 && flags.overflow_i)
         {
             flags.overflow_i = 0;
+            flags.extend = 1;
             OVDCONDbits.POVD0 = !OVDCONDbits.POVD0;
             if(OVDCONDbits.POVD0 == 0)
             {
                 OVDCONSbits.POUT1 = 1;
                 OVDCONDbits.POVD1 = 0;
             }
+            /*
             else
             {
                 //PDC0L = 0;
                 OVDCONSbits.POUT1 = 0;
                 OVDCONDbits.POVD1 = 0;    
             }
-
+            */
             OVDCONDbits.POVD4 = !OVDCONDbits.POVD0;
 
             if(OVDCONDbits.POVD0 == 1)
@@ -357,12 +372,14 @@ void interrupt isr(void)
                 OVDCONSbits.POUT5 = 1;
                 OVDCONDbits.POVD5 = 0;
             }
+            /*
             else
             {
                 //PDC2L = 0;
                 OVDCONSbits.POUT5 = 0;
                 OVDCONDbits.POVD5 = 0;    
             }
+             */
             if(PIR1bits.ADIF)
             {
                 PIR1bits.ADIF = 0;
