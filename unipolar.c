@@ -154,6 +154,7 @@ INTERRUPTS flags = {0,0,0,0,0,0,0};
 ADC_buffer ADC_BUF;
 
 static void Init(void);
+void UART(void);
 //static void temp_start(void);
 
 STATES mainState;
@@ -262,8 +263,11 @@ static void Init()
     modulate.uvw[0] = 0;
     modulate.uvw[1] = 0;
     modulate.uvw[2] = 0;
+    
+    
     PTCON1bits.PTEN = 0; // Enable PWM module
     //ADCON0bits.GO = 0;        
+    UART();
     
     POT1_DIR = 1; // Setting A0:A3 as Input Direction
     POT2_DIR = 1;
@@ -347,7 +351,13 @@ void interrupt isr(void)
             IPM_SW = 1; 
         }
         ADCON0bits.GO = 1;
-        
+        modulate.uvw[0]++;
+        if(modulate.uvw[0] > 5)
+        {
+            modulate.uvw[0] = 0;
+            TXREG = ADC_BUF.Pot1;
+        }
+            
         uint16_t buff_voltage = 0;
         uint16_t m_past,n_past;
         m_past = modulate.accum_m;
@@ -465,4 +475,19 @@ void interrupt isr(void)
 
         PIR3bits.PTIF = 0;
     }
+}
+
+void UART(void)
+{
+    BAUDCONbits.BRG16 = 0;
+    TXSTAbits.SYNC = 0;
+    TXSTAbits.BRGH = 1;
+    SPBRGH = 0x00;
+    SPBRG = 21; // Baud Rate 113.636 ~ 115.20
+    RCSTAbits.SPEN = 1;
+    TXSTAbits.TX9 = 1; // Transmit, one start and 8 data bits.
+    TXSTAbits.TXEN = 1;
+    // TXREG load data. 
+    // Check TXIF for whether no process in transission. CLEARS AUTOMATICALLY
+    
 }
