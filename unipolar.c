@@ -338,10 +338,10 @@ void interrupt isr(void)
             PIR1bits.ADIF = 0;//<-- HALT HERE
         
         ADCON0bits.GO = 1;
-        for(uint8_t z = 0;z == 4;z++)
+        //for(uint8_t z = 0;z == 4;z++)
         {
-            ADCON1bits.ADPNT = z;
-            *(&ADC_BUF->Pot1 +z) = ADRESH;
+            ADCON1bits.ADPNT = 2;
+            ADC_BUF.Idc = ADRESH;
         }
         if(ADC_BUF.Idc > I_MAX)
             mainState = MOTOR_STOP;
