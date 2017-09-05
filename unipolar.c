@@ -113,7 +113,7 @@ typedef struct {
     uint8_t voltQ7; // (MIN_VOLTAGE/MAXVOTLAGE)/(128))
     uint16_t accum_m;
     uint16_t accum_n;
-    uint8_t increment;
+    uint16_t increment;
     uint8_t Volt_inc;
     uint8_t uvw[3];
     //uint16_t Voltuvw[3] =0;
@@ -207,7 +207,7 @@ void main ()
                 if(INTCONbits.INT0F == 1 && PIR1bits.ADIF)
                 {
                     PIR1bits.ADIF = 0;
-                    modulate.increment = 0;
+                    modulate.increment = 127;
                     LED_D3_ON = 1;
                     INTCONbits.INT0F = 0;
                     mainState = MOTOR_START;
@@ -247,8 +247,8 @@ void main ()
                 // NEED TO REINITIATE EVERYTHING
                 break;
         }
-        if(flags.FAULT)
-            LED_D2_IDC = 1;
+        //if(flags.FAULT)
+          //  LED_D2_IDC = 1;
         //LED_D1_ON =( mainState==MOTOR_START);
     }
 }
@@ -322,33 +322,28 @@ static void Init()
     INTCONbits.GIE = 1; // Enable Global Interrupt
     INTCONbits.PEIE = 1;
 
-   // PTCON0bits.PTOPS = 0x00;
     ADCON0bits.ADON = 1;
     __delay_ms(10);
 
 }
-
-/*static void temp_start()
-{
-    PTCON1bits.PTEN = 1; // Enable PWM module
-    //ADCON0bits.GO = 1;
-}
-*/
 
 void interrupt isr(void)
 {
 
     if(PIR3bits.PTIF == 1 && mainState == MOTOR_START )
     {
-        ADC_BUF.Pot1 = ADRESH;
-        ADC_BUF.Pot2 = ADRESH;
-        ADC_BUF.Temp = ADRESH;
-        ADC_BUF.Idc = ADRESH;
+        if(ADCON1bits.ADPNT == 00)
+        {
+            ADC_BUF.Pot1 = ADRESH;
+            ADC_BUF.Pot2 = ADRESH;
+            ADC_BUF.Temp = ADRESH;
+            ADC_BUF.Idc = ADRESH;
+        }
         
         if(ADC_BUF.Idc > I_MAX)
         {
             mainState = MOTOR_STOP;
-            flags.FAULT = 1;
+            LED_D2_IDC = 1;
             IPM_SW = 1; 
         }
         ADCON0bits.GO = 1;
@@ -359,7 +354,10 @@ void interrupt isr(void)
         n_past = modulate.accum_n;
         //inc  += 720;
         //inc = inc*2;
-        modulate.accum_m += modulate.increment*4;   // (4545/Min_freq) <- intersect times.
+        uint16_t sat_inc = modulate.increment*8;
+        if(sat_inc > 1024)
+            sat_inc = 1024;
+        modulate.accum_m += sat_inc;   // (4545/Min_freq) <- intersect times.
         modulate.accum_m = modulate.accum_m+720;   // (4545/Min_freq) <- intersect times.
                         // 65536/ (Intersect time)) <- Increment Values
         modulate.accum_n = modulate.accum_m + 2*16384;
@@ -432,7 +430,6 @@ void interrupt isr(void)
                 // As the Table is of [64 = 2^6], need to shift the register m by (16 - 6 ) = 10 )
         
         i = modulate.accum_m>>(16-SIZE_OF_SINTABLE_IN_POWER_OF_2); 
-        //if ( j>  modulate.accum_n >>(16-SIZE_OF_SINTABLE_IN_POWER_OF_2))
         
         if ( n_past>  modulate.accum_n )
             flags.overflow_j = 1;
@@ -446,22 +443,11 @@ void interrupt isr(void)
                 OVDCONDbits.POVD3 = 0;
             }
             else{
-                //flags.overflow_j = 1;
-                //PDC1L = 0;
                 OVDCONSbits.POUT3 = 0;
                 OVDCONDbits.POVD3 = 0;    
             }
         }
         j=  modulate.accum_n >>(16-SIZE_OF_SINTABLE_IN_POWER_OF_2);
-        /*
-        if(flags.overflow_j)
-        {
-            modulate.accum_n &= 0x01ff;
-            flags.overflow_j = 0;
-            //i = 0;
-        }
-        */
-        
         
         // LATER change the variable i and j 
         uint16_t Vabc[3];
