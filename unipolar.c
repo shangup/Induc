@@ -50,6 +50,9 @@
 #define PERIOD 220 // 220, For 4545
 #endif
 
+#define TEMP_SLOPE    // 0.98304 READ/Degree celcium
+#define MAX_TEMP 73
+
 #pragma config FCMEN = OFF      // Fail-Safe Clock Monitor Enable bit (Fail-Safe Clock Monitor disabled)
 #pragma config IESO = OFF       // Internal External Oscillator Switchover bit (Internal External Switchover mode disabled)
 
@@ -111,6 +114,7 @@ typedef struct {
     uint16_t accum_m;
     uint16_t accum_n;
     uint8_t increment;
+    uint8_t Volt_inc;
     uint8_t uvw[3];
     //uint16_t Voltuvw[3] =0;
 }Modulate;
@@ -130,13 +134,15 @@ typedef struct {
     bool FAULT;
     bool overflow_i;
     bool overflow_j;
+    bool TEMP;
+    bool OVER_CURRENT;
 } INTERRUPTS;
 
 typedef struct{
-    uint8_t Pot1:0;
-    uint8_t Pot2:0;
-    uint8_t Temp:0;
-    uint8_t Idc:0;
+    uint8_t Pot1;
+    uint8_t Pot2;
+    uint8_t Temp;
+    uint8_t Idc;
 }ADC_buffer;
 
 typedef enum
@@ -144,7 +150,7 @@ typedef enum
     INIT = 0 , IDLE = 2, MOTOR_START = 1, MOTOR_STOP=4
 } STATES;
 
-INTERRUPTS flags;
+INTERRUPTS flags = {0,0,0,0,0,0,0};
 ADC_buffer ADC_BUF;
 
 static void Init(void);
@@ -334,17 +340,18 @@ void interrupt isr(void)
 
     if(PIR3bits.PTIF == 1 && mainState == MOTOR_START )
     {
-        if(PIR1bits.ADIF == 0)
-            PIR1bits.ADIF = 0;//<-- HALT HERE
+        ADC_BUF.Pot1 = ADRESH;
+        ADC_BUF.Pot2 = ADRESH;
+        ADC_BUF.Temp = ADRESH;
+        ADC_BUF.Idc = ADRESH;
         
-        ADCON0bits.GO = 1;
-        //for(uint8_t z = 0;z == 4;z++)
-        {
-            ADCON1bits.ADPNT = 2;
-            ADC_BUF.Idc = ADRESH;
-        }
         if(ADC_BUF.Idc > I_MAX)
+        {
             mainState = MOTOR_STOP;
+            flags.FAULT = 1;
+            IPM_SW = 1; 
+        }
+        ADCON0bits.GO = 1;
         
         uint16_t buff_voltage = 0;
         uint16_t m_past,n_past;
@@ -352,16 +359,16 @@ void interrupt isr(void)
         n_past = modulate.accum_n;
         //inc  += 720;
         //inc = inc*2;
-        modulate.accum_m += (1024);   // (4545/Min_freq) <- intersect times.
+        modulate.accum_m += modulate.increment*4;   // (4545/Min_freq) <- intersect times.
         modulate.accum_m = modulate.accum_m+720;   // (4545/Min_freq) <- intersect times.
                         // 65536/ (Intersect time)) <- Increment Values
         modulate.accum_n = modulate.accum_m + 2*16384;
-        buff_voltage = 64 +  (modulate.increment/11)*4; // Actually it should be 11.25
-        //buff_voltage = 64 + (inc/11); // Actually it should be 11.25
+        //buff_voltage = 64 +  (modulate.increment/11)*4; // Actually it should be 11.25
+        buff_voltage = modulate.Volt_inc; // Actually it should be 11.25
 
         if (buff_voltage > 128)
              buff_voltage = 128;
-
+        
         buff_voltage = buff_voltage*compensate.VoltClckComp;      // Because PERIOD IS 220 in this case
         buff_voltage = buff_voltage>>(7+2);   // originally Doont need this. just copy
 
@@ -397,17 +404,30 @@ void interrupt isr(void)
                 OVDCONSbits.POUT5 = 0;
                 OVDCONDbits.POVD5 = 0;    
             }
-            if(PIR1bits.ADIF)
+            
+            int diff_inc = modulate.increment - (uint8_t)ADC_BUF.Pot1;
+            if (diff_inc < -5)
             {
-                PIR1bits.ADIF = 0;
-                int diff_inc = modulate.increment - (uint8_t)ADRESH;
-                if (diff_inc < -5)
-                {
-                    modulate.increment++;
-                }
-                else if(diff_inc > 5)
-                    modulate.increment--;
+                modulate.increment++;
             }
+            else if(diff_inc > 5)
+                modulate.increment--;
+            
+            int diff_inc = modulate.Volt_inc - (uint8_t)ADC_BUF.Pot2;
+            if (diff_inc < -3)
+            {
+                modulate.Volt_inc++;
+            }
+            else if(diff_inc > 3)
+                modulate.Volt_inc--;
+            
+            if(ADC_BUF.Temp > MAX_TEMP)
+            {
+                flags.TEMP = 1;
+                mainState = MOTOR_STOP;
+                IPM_SW = 1; 
+            }
+        
         }
                 // As the Table is of [64 = 2^6], need to shift the register m by (16 - 6 ) = 10 )
         
