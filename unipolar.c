@@ -30,7 +30,7 @@
 #define AMP_VOLT_CONV 2 // 2AMP per Volt
 #define MAX_CURRENT 10 // Need to make a fuction as this is an instataneosu current.
 #define CYCLE_AVG SIZE_OF_SINETABLE
-
+#define I_MAX 155
 
 #ifdef POT_BASED_FREQVOLT 
 #define MATCH_SPEED 10 // FOR NOW A RANDOM NUMBER. THIS IS TO slowly changingn
@@ -132,12 +132,20 @@ typedef struct {
     bool overflow_j;
 } INTERRUPTS;
 
+typedef struct{
+    uint8_t Pot1:0;
+    uint8_t Pot2:0;
+    uint8_t Temp:0;
+    uint8_t Idc:0;
+}ADC_buffer;
+
 typedef enum
 {
     INIT = 0 , IDLE = 2, MOTOR_START = 1, MOTOR_STOP=4
 } STATES;
 
 INTERRUPTS flags;
+ADC_buffer ADC_BUF;
 
 static void Init(void);
 //static void temp_start(void);
@@ -197,6 +205,7 @@ void main ()
                     LED_D3_ON = 1;
                     INTCONbits.INT0F = 0;
                     mainState = MOTOR_START;
+                    ADCON0bits.GO = 1;
                     PTCON1bits.PTEN = 1; // Enable PWM module
                     __delay_ms(500);
                     IPM_SW = 0; 
@@ -248,21 +257,34 @@ static void Init()
     modulate.uvw[1] = 0;
     modulate.uvw[2] = 0;
     PTCON1bits.PTEN = 0; // Enable PWM module
-    ADCON0bits.GO = 0;        
+    //ADCON0bits.GO = 0;        
     
-    TRISAbits.TRISA0 = 1;
-    ANSEL0bits.ANS0 = 1;
-    ADCHS &= 0xFC ; 
-    ADCON0 = 0x20 ; // Continous; Single channel mode enable; Single channed mode 1 ; 0;0
-    ADCON1 &= 0x2F; // Avref ; Fifo disabled
-    ADCON2 = 0x7C; // Left Justified ; Aquisition time 64 TAD ; Clock Fosc/4
+    POT1_DIR = 1; // Setting A0:A3 as Input Direction
+    POT2_DIR = 1;
+    TEMP_DIR = 1;
+    Idc_DIR = 1;
+    
+    POT1_ADC = 1; // Setting pins as Analog Input A0:A3
+    POT2_ADC = 1;
+    TEMP_ADC = 1;
+    Idc_ADC = 1;
+    
+    ADCHS = 0x00 ; 
+    ADCON0bits.ACONV = 0; // Single Mode
+    ADCON0bits.ACSCH = 1; // Multichannel mode enable
+    ADCON0bits.ACMOD = 1; // SEQM2 Sample all four Group
+    
+    //ADCON0 = 0x20 ; // Continous; Single channel mode enable; Single channed mode 1 ; 0;0
+    ADCON1bits.VCFG = 0; // Supplies as Vref
+    ADCON1bits.FIFOEN= 1; // FIFO EnABLED
+    
+    ADCON2 = 0x60; // Left Justified ; Aquisition time 36 TAD ; Clock Fosc/2
     PIR1bits.ADIF = 0; // A/D Flag 0
     
-    ADCON3 = 0xB0 ; // Interrupt per word conversion ; Trigger disabled, default 0x00
+    ADCON3 = 0xB0; // Interrupt when 4th word conversion ; Trigger disabled, default 0x00
     
     
     OVDCONS = 0x00;
-   
     PTCON0 = 0x02; 
     // TIME BASE POST SCALER PTCON0[4:7] ; 
     //INOPUT CLOCK SCALER [2:3] (1/4))
@@ -312,6 +334,18 @@ void interrupt isr(void)
 
     if(PIR3bits.PTIF == 1 && mainState == MOTOR_START )
     {
+        if(PIR1bits.ADIF == 0)
+            PIR1bits.ADIF = 0;//<-- HALT HERE
+        
+        ADCON0bits.GO = 1;
+        for(uint8_t z = 0;z == 4;z++)
+        {
+            ADCON1bits.ADPNT = z;
+            *(&ADC_BUF->Pot1 +z) = ADRESH;
+        }
+        if(ADC_BUF.Idc > I_MAX)
+            mainState = MOTOR_STOP;
+        
         uint16_t buff_voltage = 0;
         uint16_t m_past,n_past;
         m_past = modulate.accum_m;
