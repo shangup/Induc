@@ -13,7 +13,9 @@ nbproject/private/
 nbproject/Package-*.bash
 build/
 nbbuild/
+debug/
 dist/
+nbproject/
 nbdist/
 nbactions.xml
 nb-configuration.xml
