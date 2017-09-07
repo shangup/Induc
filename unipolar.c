@@ -4,6 +4,7 @@
 #include "main.h"
 // 'C' source line config statements
 
+#define ADRES (ADRESH<<8 | ADRESL)
 // CONFIG1H
 #define _XTAL_FREQ 40000000
 
@@ -30,7 +31,7 @@
 #define AMP_VOLT_CONV 2 // 2AMP per Volt
 #define MAX_CURRENT 10 // Need to make a fuction as this is an instataneosu current.
 #define CYCLE_AVG SIZE_OF_SINETABLE
-#define I_MAX 155
+#define I_MAX 120
 
 #ifdef POT_BASED_FREQVOLT 
 #define MATCH_SPEED 10 // FOR NOW A RANDOM NUMBER. THIS IS TO slowly changingn
@@ -51,7 +52,7 @@
 #endif
 
 #define TEMP_SLOPE    // 0.98304 READ/Degree celcium
-#define MAX_TEMP 73
+#define MAX_TEMP 80
 
 #pragma config FCMEN = OFF      // Fail-Safe Clock Monitor Enable bit (Fail-Safe Clock Monitor disabled)
 #pragma config IESO = OFF       // Internal External Oscillator Switchover bit (Internal External Switchover mode disabled)
@@ -139,7 +140,7 @@ typedef struct {
 } INTERRUPTS;
 
 typedef struct{
-    uint8_t Pot1;
+    uint16_t Pot1;
     uint8_t Pot2;
     uint8_t Temp;
     uint8_t Idc;
@@ -282,6 +283,7 @@ static void Init()
     ADCHS = 0x00 ; 
     ADCON0bits.ACONV = 0; // Single Mode
     ADCON0bits.ACSCH = 1; // Multichannel mode enable
+    //ADCON0bits.ACMOD = 1; // SEQM2 Sample all four Group
     ADCON0bits.ACMOD = 1; // SEQM2 Sample all four Group
     
     //ADCON0 = 0x20 ; // Continous; Single channel mode enable; Single channed mode 1 ; 0;0
@@ -289,6 +291,8 @@ static void Init()
     ADCON1bits.FIFOEN= 1; // FIFO EnABLED
     
     ADCON2 = 0x60; // Left Justified ; Aquisition time 36 TAD ; Clock Fosc/2
+    ADCON2bits.ACQT = 15;
+    ADCON2bits.ADFM = 0;
     PIR1bits.ADIF = 0; // A/D Flag 0
     
     ADCON3 = 0xB0; // Interrupt when 4th word conversion ; Trigger disabled, default 0x00
@@ -351,13 +355,33 @@ void interrupt isr(void)
             IPM_SW = 1; 
         }
         ADCON0bits.GO = 1;
-        modulate.uvw[0]++;
-        if(modulate.uvw[0] > 5)
+        
+        //modulate.uvw[0] = ADCON1bits.ADPNT;
+        switch(modulate.uvw[0])
         {
-            modulate.uvw[0] = 0;
-            TXREG = ADC_BUF.Pot1;
+            case 1:
+            {
+                TXREG = ADC_BUF.Pot1;
+                break;
+            }
+            case 2:
+            {
+                TXREG = ADC_BUF.Pot2;
+                break;
+            }    
+            case 3:
+            {
+                TXREG = ADC_BUF.Temp;
+                break;
+            }
+            case 4:
+            {
+                TXREG = ADC_BUF.Idc;
+                modulate.uvw[0] = 0;
+                break;
+            }
         }
-            
+        modulate.uvw[0]++;
         uint16_t buff_voltage = 0;
         uint16_t m_past,n_past;
         m_past = modulate.accum_m;
@@ -413,7 +437,7 @@ void interrupt isr(void)
                 OVDCONDbits.POVD5 = 0;    
             }
             
-            int diff_inc = modulate.increment - (uint8_t)ADC_BUF.Pot1;
+            int diff_inc = modulate.increment - (uint16_t)ADC_BUF.Pot1;
             if (diff_inc < -5)
             {
                 modulate.increment++;
@@ -485,9 +509,9 @@ void UART(void)
     SPBRGH = 0x00;
     SPBRG = 21; // Baud Rate 113.636 ~ 115.20
     RCSTAbits.SPEN = 1;
-    TXSTAbits.TX9 = 1; // Transmit, one start and 8 data bits.
+    TXSTAbits.TX9 = 0; // Transmit, one start and 8 data bits.
+    // ^^^, In reality don't need the 9th bit.; Without it it's 8 bit Data.
     TXSTAbits.TXEN = 1;
     // TXREG load data. 
-    // Check TXIF for whether no process in transission. CLEARS AUTOMATICALLY
-    
+    // Check TXIF for whether no process in transission. CLEARS AUTOMATICALLY   
 }
