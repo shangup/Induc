@@ -208,15 +208,15 @@ void main ()
                 ADCON0bits.GO = 1;
                 if(INTCONbits.INT0F == 1 && PIR1bits.ADIF)
                 {
-                    PIR1bits.ADIF = 0;
-                    modulate.increment = 127;
-                    LED_D3_ON = 1;
-                    INTCONbits.INT0F = 0;
-                    mainState = MOTOR_START;
-                    ADCON0bits.GO = 1;
-                    PTCON1bits.PTEN = 1; // Enable PWM module
-                    __delay_ms(500);
-                    IPM_SW = 0; 
+                PIR1bits.ADIF = 0;
+                modulate.increment = 127;
+                LED_D3_ON = 1;
+                INTCONbits.INT0F = 0;
+                mainState = MOTOR_START;
+                ADCON0bits.GO = 1;
+                PTCON1bits.PTEN = 1; // Enable PWM module
+                __delay_ms(500);
+                IPM_SW = 0; 
                 }
                 break;
             case MOTOR_START:
