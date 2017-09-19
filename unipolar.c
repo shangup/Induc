@@ -280,24 +280,18 @@ static void Init()
     TEMP_ADC = 1;
     Idc_ADC = 1;
     
-    ADCHS = 0x00 ; 
-    ADCON0bits.ACONV = 0; // Single Mode
-    ADCON0bits.ACSCH = 1; // Multichannel mode enable
-    //ADCON0bits.ACMOD = 1; // SEQM2 Sample all four Group
-    ADCON0bits.ACMOD = 1; // SEQM2 Sample all four Group
-    
-    //ADCON0 = 0x20 ; // Continous; Single channel mode enable; Single channed mode 1 ; 0;0
-    ADCON1bits.VCFG = 0; // Supplies as Vref
-    ADCON1bits.FIFOEN= 1; // FIFO EnABLED
-    
-    ADCON2 = 0x60; // Left Justified ; Aquisition time 36 TAD ; Clock Fosc/2
-    ADCON2bits.ACQT = 15;
-    ADCON2bits.ADFM = 0;
+    ADCHS &= 0xFC ; 
+    ADCON0 = 0x20 ; // Continous; Single channel mode enable; Single channed mode 1 ; 0;0
+    ADCON1 &= 0x2F; // Avref ; Fifo disabled
+    ADCON2 = 0x7C; // Left Justified ; Aquisition time 64 TAD ; Clock Fosc/4
+    ADCON0bits.ACONV = 0;
+    ADCON0bits.ACSCH = 1;
+    ADCON1bits.FIFOEN = 1;
+    ADCON0bits.ACMOD = 1;
     PIR1bits.ADIF = 0; // A/D Flag 0
     
-    ADCON3 = 0xB0; // Interrupt when 4th word conversion ; Trigger disabled, default 0x00
-    
-    
+    ADCON3 = 0xB0 ; // Interrupt per word conversion ; Trigger disabled, default 0x00
+        
     OVDCONS = 0x00;
     PTCON0 = 0x02; 
     // TIME BASE POST SCALER PTCON0[4:7] ; 
