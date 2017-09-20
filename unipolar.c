@@ -21,7 +21,7 @@
 
 #define FREQ_4545 4545
 #define SET_FREQ   FREQ_4545
-#define FREQ_OFF 200
+#define FREQ_OFF 150
 
 // In Hz.
 #define MAX_FREQ 60
@@ -455,7 +455,7 @@ void interrupt isr(void)
                 mainState = MOTOR_STOP;
                 IPM_SW = 1; 
             }
-            modulate.increment = (modulate.incr_dynamic*4) + FREQ_OFF;
+            modulate.increment = (modulate.incr_dynamic*7) + FREQ_OFF;
         
         }
                 // As the Table is of [64 = 2^6], need to shift the register m by (16 - 6 ) = 10 )
