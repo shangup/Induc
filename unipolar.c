@@ -32,7 +32,7 @@
 #define AMP_VOLT_CONV 2 // 2AMP per Volt
 #define MAX_CURRENT 10 // Need to make a fuction as this is an instataneosu current.
 #define CYCLE_AVG SIZE_OF_SINETABLE
-#define I_MAX 120
+#define I_MAX 150
 
 #ifdef POT_BASED_FREQVOLT 
 #define MATCH_SPEED 10 // FOR NOW A RANDOM NUMBER. THIS IS TO slowly changingn
@@ -119,6 +119,7 @@ typedef struct {
     uint16_t increment;
     uint8_t Volt_inc;
     uint8_t uvw[3];
+    uint16_t update_cnt;
     //uint16_t Voltuvw[3] =0;
 }Modulate;
 
@@ -266,6 +267,9 @@ static void Init()
     modulate.uvw[0] = 0;
     modulate.uvw[1] = 0;
     modulate.uvw[2] = 0;
+    modulate.Volt_inc = 21;
+    modulate.incr_dynamic = 0;
+    modulate.increment = FREQ_OFF;
     
     
     PTCON1bits.PTEN = 0; // Enable PWM module
@@ -333,9 +337,11 @@ static void Init()
 
 void interrupt isr(void)
 {
-
+    modulate.update_cnt++;
+    uint16_t sat_inc = modulate.increment;
     if(PIR3bits.PTIF == 1 && mainState == MOTOR_START )
     {
+        
         if(ADCON1bits.ADPNT == 00)
         {
             ADC_BUF.Pot1 = ADRESH;
@@ -362,7 +368,7 @@ void interrupt isr(void)
             }
             case 2:
             {
-                TXREG = ADC_BUF.Pot2;
+                TXREG = sat_inc>>5;
                 break;
             }    
             case 3:
@@ -384,7 +390,6 @@ void interrupt isr(void)
         n_past = modulate.accum_n;
         //inc  += 720;
         //inc = inc*2;
-        uint16_t sat_inc = modulate.increment;
         if(sat_inc > 1744) // 1024+720 = 60Hz
             sat_inc = 1744;
         modulate.accum_m += sat_inc;   // (4545/Min_freq) <- intersect times.
@@ -432,7 +437,10 @@ void interrupt isr(void)
                 OVDCONSbits.POUT5 = 0;
                 OVDCONDbits.POVD5 = 0;    
             }
-            
+        }
+        if(modulate.update_cnt > 500)
+        {
+            modulate.update_cnt = 0;
             int diff_inc = modulate.incr_dynamic - ADC_BUF.Pot1;
             if (diff_inc < -5)
             {
@@ -440,7 +448,7 @@ void interrupt isr(void)
             }
             else if(diff_inc > 5)
                 modulate.incr_dynamic--;
-            
+            /*
             int diff_inc = modulate.Volt_inc - (uint8_t)ADC_BUF.Pot2;
             if (diff_inc < -3)
             {
@@ -448,7 +456,7 @@ void interrupt isr(void)
             }
             else if(diff_inc > 3)
                 modulate.Volt_inc--;
-            
+            */
             if(ADC_BUF.Temp > MAX_TEMP)
             {
                 flags.TEMP = 1;
@@ -456,6 +464,7 @@ void interrupt isr(void)
                 IPM_SW = 1; 
             }
             modulate.increment = (modulate.incr_dynamic*7) + FREQ_OFF;
+            modulate.Volt_inc = 21 + (modulate.increment*19)>>8;
         
         }
                 // As the Table is of [64 = 2^6], need to shift the register m by (16 - 6 ) = 10 )
