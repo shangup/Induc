@@ -21,6 +21,7 @@
 
 #define FREQ_4545 4545
 #define SET_FREQ   FREQ_4545
+#define FREQ_OFF 200
 
 // In Hz.
 #define MAX_FREQ 60
@@ -114,6 +115,7 @@ typedef struct {
     uint8_t voltQ7; // (MIN_VOLTAGE/MAXVOTLAGE)/(128))
     uint16_t accum_m;
     uint16_t accum_n;
+    uint8_t incr_dynamic;
     uint16_t increment;
     uint8_t Volt_inc;
     uint8_t uvw[3];
@@ -382,11 +384,11 @@ void interrupt isr(void)
         n_past = modulate.accum_n;
         //inc  += 720;
         //inc = inc*2;
-        uint16_t sat_inc = modulate.increment*8;
-        if(sat_inc > 1024)
-            sat_inc = 1024;
+        uint16_t sat_inc = modulate.increment;
+        if(sat_inc > 1744) // 1024+720 = 60Hz
+            sat_inc = 1744;
         modulate.accum_m += sat_inc;   // (4545/Min_freq) <- intersect times.
-        modulate.accum_m = modulate.accum_m+720;   // (4545/Min_freq) <- intersect times.
+        //modulate.accum_m = modulate.accum_m+200;   // (4545/Min_freq) <- intersect times.
                         // 65536/ (Intersect time)) <- Increment Values
         modulate.accum_n = modulate.accum_m + 2*16384;
         //buff_voltage = 64 +  (modulate.increment/11)*4; // Actually it should be 11.25
@@ -431,13 +433,13 @@ void interrupt isr(void)
                 OVDCONDbits.POVD5 = 0;    
             }
             
-            int diff_inc = modulate.increment - (uint16_t)ADC_BUF.Pot1;
+            int diff_inc = modulate.incr_dynamic - ADC_BUF.Pot1;
             if (diff_inc < -5)
             {
-                modulate.increment++;
+                modulate.incr_dynamic++;
             }
             else if(diff_inc > 5)
-                modulate.increment--;
+                modulate.incr_dynamic--;
             
             int diff_inc = modulate.Volt_inc - (uint8_t)ADC_BUF.Pot2;
             if (diff_inc < -3)
@@ -453,6 +455,7 @@ void interrupt isr(void)
                 mainState = MOTOR_STOP;
                 IPM_SW = 1; 
             }
+            modulate.increment = (modulate.incr_dynamic*4) + FREQ_OFF;
         
         }
                 // As the Table is of [64 = 2^6], need to shift the register m by (16 - 6 ) = 10 )
