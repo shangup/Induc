@@ -22,5 +22,5 @@ nb-configuration.xml
 funclist
 nbproject/Makefile-*
 disassembly/
-Makefile-*
+Makefile
 *.map
